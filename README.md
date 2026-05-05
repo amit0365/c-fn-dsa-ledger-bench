@@ -24,20 +24,31 @@ see [BOILERPLATE_README.md](BOILERPLATE_README.md).
 
 ## Memory layout
 
-Targets ST33K1M5 (Cortex-M3-class secure element, 64 KB total SRAM,
-36 KB available to apps after BOLOS reservation):
+Targets ST33K1M5 (Cortex-M3-class secure element). Both Flash and SRAM
+are physical memory regions on the chip; the linker maps app sections
+to one or the other based on read/write semantics.
 
 ```
-.text  (Flash)        91 KiB    code: FN-DSA-512 sign path + bench harness
-N_app_basis (NVRAM)   16 KiB    precomputed B = [[g,-f],[G,-F]] in FFT format
-                                (Layer 2 of LOW_RAM — flash-resident)
-G_fndsa_tmp (.bss)    18,975 B  per-sign scratch (37n+31 at logn=9)
-G_sk_encoded (.bss)    1,281 B  encoded sk (FN-DSA wire format)
-sig + bookkeeping     ~2 KiB
-─────────────────────────────────
-SRAM used             ~24 KiB    fits in 36 KiB envelope
-Stack remaining       ~12 KiB    well above linker's 1500-byte minimum
+Flash region    (1.5 MB total, 400 KB allocated to app FLASH section):
+├── .text                91 KiB   code (read-only at runtime, CPU instr fetch)
+├── N_app_basis          16 KiB   precomputed B = [[g,-f],[G,-F]] in FFT format
+│                                  (Layer 2 of LOW_RAM — writable via nvm_write,
+│                                   read on every sign, persists across reboots)
+└── N_storage             16 B    basis_valid flag (atomic-commit semantics)
+
+SRAM region     (64 KB total, 36 KB allocated to app):
+├── G_fndsa_tmp        18,975 B   per-sign scratch (37n+31 at logn=9)
+├── G_sk_encoded        1,281 B   encoded sk (FN-DSA wire format)
+├── sig + bookkeeping   ~2 KiB    static sig buffers, NBGL state, I/O
+└── Stack              ~12 KiB    remaining (linker minimum 1500 B)
 ```
+
+The SDK calls writable Flash regions "NVRAM" (`N_*` prefix), but
+they're not RAM — same Flash chip as `.text`, just with `nvm_write()`
+syscall support for runtime modification (slow Flash erase+program).
+The 16 KiB precomputed basis lives in Flash so it survives power
+cycles; never re-provisioned unless the host explicitly re-issues
+`INS_PROVISION`.
 
 ## Build
 
