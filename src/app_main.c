@@ -30,6 +30,11 @@
 
 bench_ctx_t G_bench;
 
+/* Per-sign scratch buffer for fndsa_sign_seeded_with_basis_temp().
+   FNDSA_LOW_RAM at logn=9 needs 37n+31 = 18,975 bytes. Aligned to 8
+   for fpr (= IEEE-754 double). Size declared in globals.h. */
+__attribute__((aligned(8))) uint8_t G_fndsa_tmp[G_FNDSA_TMP_SIZE];
+
 const app_storage_t N_storage_real;
 const uint8_t N_app_basis_real[APP_BASIS_BYTES];
 

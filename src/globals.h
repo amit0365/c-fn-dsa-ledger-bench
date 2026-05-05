@@ -30,3 +30,8 @@ extern const app_storage_t N_storage_real;
 #define APP_BASIS_BYTES (4u * 512u * 8u)
 extern const uint8_t N_app_basis_real[APP_BASIS_BYTES];
 #define N_app_basis ((const uint8_t *) PIC(&N_app_basis_real))
+
+/* Per-sign scratch (FNDSA_LOW_RAM at logn=9: 37n+31 = 18,975 bytes).
+   Lives in .bss; defined in app_main.c. Aligned to 8 for fpr. */
+#define G_FNDSA_TMP_SIZE (((size_t)37u << 9) + 31u)
+extern uint8_t G_fndsa_tmp[G_FNDSA_TMP_SIZE];
