@@ -1,130 +1,192 @@
 # Running the bench on real Ledger Flex / Stax hardware
 
-This guide is for someone with a physical Flex or Stax who can flash
-the app and report back cycle counts. **You do not need to develop
-or build anything — just install + run a Python script.**
+**Audience:** anyone with a Flex or Stax who agreed to flash a small
+test app and report back numbers. **You don't need to build anything
+or install developer tools** — just download two files, install the
+prebuilt app, run a Python script, paste the output back.
 
-Estimated time: ~10 minutes.
+Estimated time: **~10 minutes** including install.
 
-## What we're measuring
+## Files you need to download
 
-- Wall-clock time for FN-DSA-512 (Falcon-512) signing using the
-  `FNDSA_LOW_RAM` reduction (~19 KiB per-sign scratch)
-- Reproducibility: the signature should be byte-identical across runs
-  with the same hardcoded sk + msg + seed
-- KAT bit-exactness: signature hash should match host-side reference
+From whoever asked you to do this (links / attachment / Slack file share):
 
-The app is bench-only: no real key handling, no transaction signing,
-no UI flow. It just answers APDUs.
+| File | Purpose |
+|---|---|
+| **`app.apdu`** | The prebuilt Ledger app install bundle. Choose `flex` or `stax` matching your device. |
+| **`run_hardware_bench.py`** | Python script that talks to the device via USB and runs the bench. |
 
-## Step 1 — install the app
+That's it. Two files.
 
-The build produces `bin/app.apdu` which is Ledger's install-bundle
-format. To flash:
+You don't need the `.elf`, the source code, Docker, or any toolchain.
 
-### Option A: Ledger Live (developer mode)
-
-1. Open Ledger Live → **Settings → Developer mode** (toggle on)
-2. Connect your Flex or Stax via USB
-3. Enable Manager access on the device
-4. From a terminal, run:
-   ```sh
-   pip install ledgerblue
-   python3 -m ledgerblue.runScript --apdu < bin/app.apdu
-   ```
-
-### Option B: ledgerctl (more direct, if you've used it before)
+## Step 1 — install the .apdu on your device
 
 ```sh
-pip install ledgerwallet
-ledgerctl install bin/app.apdu
+# One-time tool install (Python package)
+pip install ledgerblue hidapi
+
+# On macOS only, you also need the native USB lib:
+brew install hidapi    # macOS
+# (Linux: sudo apt install libhidapi-dev)
 ```
 
-The app will appear on the device as **"Boilerplate"** (default app
-name from the boilerplate template — cosmetic, will be renamed in a
-later iteration).
+Connect your Flex / Stax via USB. **Make sure Ledger Live is closed
+or in dashboard mode** (the bench can't run while Ledger Live holds the
+USB lock).
+
+Enable developer mode:
+1. On the device, **Settings → Developer → Developer mode → ON**
+2. Confirm any "unsafe manager" prompts that appear
+
+Now flash the app:
+
+```sh
+python3 -m ledgerblue.runScript --apdu < app.apdu
+```
+
+The device will show a "Allow installation" prompt — confirm it.
+Installation takes ~5 seconds. After install, the device returns to
+the home screen with a new app icon ("Boilerplate" — that's the default
+name we forgot to change; cosmetic only).
 
 ## Step 2 — open the app on the device
 
-On the device's home screen, scroll to "Boilerplate" and tap to open.
-You should see a screen reading "FN-DSA Bench" with the subtitle
-"FN-DSA-512 / FNDSA_LOW_RAM bench harness — APDU-driven."
+Scroll to **Boilerplate** on the device home screen and tap to open.
+
+You should see:
+> **FN-DSA Bench**
+> FN-DSA-512 / FNDSA_LOW_RAM bench harness — APDU-driven.
 
 The device is now waiting for APDU commands.
 
-## Step 3 — run the bench from your computer
+## Step 3 — run the bench script
 
 ```sh
-pip install hidapi  # one-time
-python3 tests/run_hardware_bench.py
+python3 run_hardware_bench.py
 ```
 
-That script:
-1. Connects to the device via USB HID
-2. Sends `INS_PROVISION` once (computes basis, persists to NVRAM — ~1 second)
-3. Sends `INS_RUN_BENCH` with N=10 iterations (signs 10 times)
-4. Reports total elapsed wall-clock + per-sign average
-5. Sends `INS_KAT_CHECK` once and shows the first bytes of the signature
-6. Prints a summary that you can copy back to us
+The script:
+1. Auto-detects your device (Flex / Stax / Nano)
+2. Sends `INS_PROVISION` once — computes a precomputed-basis from the
+   hardcoded test sk and persists it to NVRAM (~1 second)
+3. Sends `INS_RUN_BENCH` with N=10 — signs 10 times, times the
+   round-trip, computes per-sign average
+4. Sends `INS_KAT_CHECK` — returns the first 32 bytes of the raw signature
+5. Repeats `INS_RUN_BENCH` 3 more times to verify the signature is
+   reproducible (same hardcoded seed → same signature, every time)
+6. Prints a summary
 
-Expected output:
+Expected output looks like this (numbers are placeholders — actual
+cycle count is what we're measuring and don't yet know):
 
 ```
-Device: Ledger Flex (or Stax)
+Device: Ledger Flex
+App version: 2.3.1
 Provisioning basis ... done (855 ms)
 Bench: 10 signatures with FN-DSA-512 LOW_RAM
-  Total elapsed: 12,847 ms
-  Per-sign average: 1,285 ms
+  Total elapsed: 12,847 ms  (10 sigs)
+  Per-sign average: 1,284.7 ms
+  Signature length: 666 bytes  (expected 666)
   Sig hash: 4abaa2708713f88052d5d4efffe02ba701c6a2a143bf64c58a6568eca46672b7
 KAT signature first 32 bytes: 3927c1bf1c440364bb1070af0e9c315690b6c71e4a90d988b4802861668751591
 
 Reproducibility check: re-running INS_RUN_BENCH 3 more times...
-  Run 1: hash = 4abaa270... ✓ (identical)
-  Run 2: hash = 4abaa270... ✓
-  Run 3: hash = 4abaa270... ✓
+  Run 1: hash = 4abaa270...  ✓
+  Run 2: hash = 4abaa270...  ✓
+  Run 3: hash = 4abaa270...  ✓
+
+============================================================
+Summary to send back:
+============================================================
+  Device:           Ledger Flex
+  App version:      2.3.1
+  Per-sign avg:     1,284.7 ms
+  Sig hash:         4abaa2708713f88052d5d4efffe02ba701c6a2a143bf64c58a6568eca46672b7
+  Provision time:   855 ms
+  Reproducible:     yes (3 runs identical)
 ```
 
-(Numbers are illustrative — actual cycle count is what we're trying
-to measure and don't know yet.)
+## Step 4 — send the output back
 
-## Step 4 — send results back
+Copy the "Summary to send back" block and paste it into the channel
+where this was requested (issue / chat / email).
 
-Copy the output from Step 3 and paste it into the issue / chat where
-this was requested. The values we need are:
-
-- **Per-sign average ms** (the headline number)
-- **Sig hash** — confirms bit-exactness vs Speculos run
+We need:
+- **Per-sign avg** — the headline number we're after
+- **Sig hash** — confirms cryptographic correctness; should match what
+  we measured in the Speculos emulator: `4abaa270...`
 - **Device model** (Flex or Stax)
-- **App version** as reported by GET_VERSION
+- **Reproducible: yes/no**
 
-That's it. The whole thing should take ~10 minutes including install.
+That's it. You can uninstall the app afterwards via Ledger Live →
+Manager → Boilerplate → uninstall.
 
-## What we'll do with the data
-
-The per-sign cycle count on real ST33K1M5 silicon answers the open
-question from upstream c-fn-dsa LOW_RAM submission: *can FN-DSA-512
-with the precomputed-basis API actually meet a typical embedded-SE
-signing-latency budget?* The answer depends entirely on this number.
-
-Speculos timing is not meaningful (it's x86 emulating ARM, ~10-100×
-slower per ARM instruction than real silicon). Only physical hardware
-gives us the true cycle count.
+---
 
 ## Troubleshooting
 
-**Device says "Allow unsafe manager?"** → tap allow; this is needed
-to install non-app-store apps.
+**"No Ledger device found"**
+→ Device is locked, or Ledger Live is open. Unlock the device, close
+   Ledger Live, retry.
 
-**"App not in app store"** → expected; this is a developer-mode app.
+**Bench app open on device but script can't connect**
+→ macOS may need explicit USB-HID permission. System Preferences →
+   Security & Privacy → Input Monitoring → enable for Terminal.
+   Or try `sudo python3 run_hardware_bench.py`.
 
-**Python script can't find device** → make sure the device is unlocked,
-the bench app is open (not the home screen), and Ledger Live is closed
-(it can hold the USB lock).
+**`ImportError: hidapi`**
+→ macOS: `brew install hidapi` then `pip install hidapi`.
+→ Linux: `sudo apt install libhidapi-dev` then `pip install hidapi`.
 
-**`ImportError: hidapi`** → on macOS: `brew install hidapi` then
-re-run `pip install hidapi`. On Linux: `sudo apt install libhidapi-dev`.
+**Install fails with "Allow unsafe manager?"**
+→ Tap allow on the device. Developer-mode apps trigger this prompt;
+   it's expected.
 
-## Removing the app afterwards
+**Device asks for PIN repeatedly during install**
+→ Normal — Ledger requires PIN re-confirmation for app installs.
 
-In Ledger Live → Manager → "Boilerplate" → uninstall. This wipes
-the precomputed basis from NVRAM along with the app code. ~1 second.
+---
+
+## What this app does (transparency)
+
+The .apdu installs a Ledger app called "Boilerplate" that:
+
+- Has **no real secret-key handling** — uses a hardcoded test vector
+  (`KAT_512_f/g/F` from the c-fn-dsa test suite) baked into the app binary
+- Performs **no transactions, transfers, or any operation that touches
+  real assets**
+- Stores 16 KiB of precomputed basis data in the app's own NVRAM
+  (deleted when the app is uninstalled)
+- Only responds to specific APDU commands; doesn't expose any other
+  attack surface
+- Built from source at: `<repo URL>` — full source vendored from
+  c-fn-dsa with `FNDSA_LOW_RAM=1`
+
+You can verify the .apdu hash against the published value before
+installing if you want belt-and-suspenders. The hash is in the README
+and in `bin/app.sha256` from the same release.
+
+If you're reluctant to install a developer-mode app on your main
+device, this is also flashable on a backup / spare Flex / Stax with
+no real assets. The app is purely for benchmarking — no real-world
+state is touched.
+
+---
+
+## For the requester (the person who asked you to run this)
+
+If you're the one preparing this for a recipient, before sending:
+
+1. Build the right .apdu for their device:
+   ```sh
+   docker run --rm -v "$(pwd):/app" -w /app \
+       ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder:latest \
+       bash -c 'export BOLOS_SDK=$FLEX_SDK && make'
+   # → produces bin/app.apdu, build/flex/bin/app.elf, build/flex/bin/app.sha256
+
+   # Repeat for Stax with $STAX_SDK if needed.
+   ```
+2. Send `bin/app.apdu` + `tests/run_hardware_bench.py` (just those 2 files)
+3. Optionally: publish a SHA-256 of the .apdu for the recipient to verify
+4. Direct them to this document
