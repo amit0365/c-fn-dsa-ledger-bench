@@ -5,7 +5,9 @@
       "Bash(git push *)",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git reset *)"
+      "Bash(git reset *)",
+      "Bash(curl -sL https://raw.githubusercontent.com/LedgerHQ/ledger-app-workflows/v1/.github/workflows/reusable_spell_check.yml)",
+      "Bash(curl -sL https://raw.githubusercontent.com/LedgerHQ/ledger-app-workflows/v1/.github/workflows/reusable_clusterfuzz_tests.yml)"
     ]
   }
 }

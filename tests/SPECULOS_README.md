@@ -31,6 +31,9 @@ sleep 4   # let it boot
 - `test_fndsa_handlers.py` — exercise INS_PROVISION, INS_RUN_BENCH, INS_KAT_CHECK
 - `test_reproducibility.py` — INS_RUN_BENCH 3 times; same seed should give
   same signature; sig_hash MUST be identical across runs
+- `test_nvram_persistence.py` — provision in Speculos run #1, exit, re-launch
+  Speculos with `--load-nvram`, run bench WITHOUT re-provisioning, verify
+  basis survived. Tests the cross-reboot Flash persistence semantics.
 
 ## Speculos APDU framing (port 9999, raw TCP)
 
@@ -69,3 +72,25 @@ Reproducibility:
 - Bit-exact match against c-fn-dsa host reference (need separate test
   comparing the sig_hash above against a host-computed reference)
 - Side-channel resistance (requires physical analysis on real silicon)
+
+## Speculos NVRAM persistence quirk
+
+For `test_nvram_persistence.py` to work, the host's `main_nvram.bin` must
+be bind-mounted to `/speculos/main_nvram.bin` inside the container (not
+`/speculos/apps/main_nvram.bin` — Speculos's cwd is `/speculos`, not the
+volume-mounted apps dir). The launch command needs:
+
+```sh
+docker run --rm -d --name speculos-persist \
+    -v "$(pwd):/speculos/apps" \
+    -v "$(pwd)/main_nvram.bin:/speculos/main_nvram.bin" \
+    ... \
+    --load-nvram --save-nvram \
+    --model flex \
+    apps/build/flex/bin/app.elf
+```
+
+Both `--load-nvram` AND `--save-nvram` are needed for the
+write-through-on-`nvm_write` behavior. The host file must exist before
+container start (Docker bind-mount won't create it). The Python test
+script handles all of this automatically.
